@@ -379,11 +379,17 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
     private static final int CAPACITY   = (1 << COUNT_BITS) - 1;
 
     // runState is stored in the high-order bits
+//    runState表示当前线程池的状态，它是一个volatile变量用来保证线程之间的可见性；
     private static final int RUNNING    = -1 << COUNT_BITS;
     private static final int SHUTDOWN   =  0 << COUNT_BITS;
     private static final int STOP       =  1 << COUNT_BITS;
     private static final int TIDYING    =  2 << COUNT_BITS;
     private static final int TERMINATED =  3 << COUNT_BITS;
+// 下面的几个static final变量表示runState可能的几个取值
+// 当创建线程池后，初始时，线程池处于RUNNING状态；
+// 如果调用了shutdown()方法，则线程池处于SHUTDOWN状态，此时线程池不能够接受新的任务，它会等待所有任务执行完毕；
+// 如果调用了shutdownNow()方法，则线程池处于STOP状态，此时线程池不能接受新的任务，并且会去尝试终止正在执行的任务；
+// 当线程池处于SHUTDOWN或STOP状态，并且所有工作线程已经销毁，任务缓存队列已经清空或执行结束后，线程池被设置为TERMINATED状态。
 
     // Packing and unpacking ctl
     private static int runStateOf(int c)     { return c & ~CAPACITY; }
@@ -474,6 +480,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * mainLock.
      */
     private int largestPoolSize;
+    //用来记录线程池中曾经出现过的最大线程数
 
     /**
      * Counter for completed tasks. Updated only on termination of
@@ -533,12 +540,14 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * is set, in which case the minimum is zero.
      */
     private volatile int corePoolSize;
+    //核心池的大小（即线程池中的线程数目大于这个参数时，提交的任务会被放进任务缓存队列）
 
     /**
      * Maximum pool size. Note that the actual maximum is internally
      * bounded by CAPACITY.
      */
     private volatile int maximumPoolSize;
+    //线程池最大能容忍的线程数
 
     /**
      * The default rejected execution handler
