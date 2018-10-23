@@ -71,6 +71,8 @@ public abstract class TimerTask implements Runnable {
      * System.currentTimeMillis, assuming this task is scheduled for execution.
      * For repeating tasks, this field is updated prior to each task execution.
      */
+/*    如果任务是按计划执行，那么 nextExecutionTime 属性是指下次任务的执行时间，时间格式是按照 System.currentTimeMillis 返回的。
+    对于需要重复进行的任务，每个任务执行之前会更新这一属性。*/
     long nextExecutionTime;
 
     /**
@@ -78,6 +80,8 @@ public abstract class TimerTask implements Runnable {
      * fixed-rate execution.  A negative value indicates fixed-delay execution.
      * A value of 0 indicates a non-repeating task.
      */
+    /*period 属性是用来表示以毫秒为时间单位的重复任务。
+    period 为正值时表示固定速率执行，负值表示固定延迟执行，值 0 表示一个非重复性的任务。*/
     long period = 0;
 
     /**

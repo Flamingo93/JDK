@@ -93,6 +93,7 @@ public class Timer {
      * and the timer thread consumes, executing timer tasks as appropriate,
      * and removing them from the queue when they're obsolete.
      */
+    /*一个 Timer 对象对应的是单个后台线程，其内部维护了一个 TaskQueue，用于顺序执行计时器任务 TimeTask 。*/
     private final TaskQueue queue = new TaskQueue();
 
     /**
@@ -320,6 +321,21 @@ public class Timer {
      *         cancelled, timer was cancelled, or timer thread terminated.
      * @throws NullPointerException if {@code task} is null
      */
+
+/*   使用 schedule (TimerTask task, Date firstTime, long period) 方法执行的计时器任务可能会因为前一个任务执
+    行时间较长而延时。每一次执行的 task 的计划时间会随着前一个 task 的实际时间而发生改变，也就是
+    scheduledExecutionTime(n+1) = realExecutionTime(n) + periodTime。也就是说如果第 n 个 task 由于某种情况导致这次的执行
+    时间过程，最后导致 systemCurrentTime>= scheduledExecutionTime(n+1)，这是第 n+1 个 task 并不会因为到时了而执行，他会等
+    待第 n 个 task 执行完之后再执行，那么这样势必会导致 n+2 个的执行时间 scheduledExecutionTime 发生改变。所以
+    schedule 方法更加注重保存间隔时间的稳定。
+
+    而对于 scheduleAtFixedRate(TimerTask task, Date firstTime, long period)，在前面也提过
+    scheduleAtFixedRate 与 schedule 方法的侧重点不同，schedule 方法侧重保存间隔时间的稳定，而 scheduleAtFixedRate 方法
+    更加侧重于保持执行频率的稳定。在 schedule 方法中会因为前一个任务的延迟而导致其后面的定时任务延时，而 scheduleAtFixedRate
+    方法则不会，如果第 n 个 task 执行时间过长导致 systemCurrentTime >= scheduledExecutionTime(n+1)，则不会做任何等待他会
+    立即执行第 n+1 个 task，所以 scheduleAtFixedRate 方法执行时间的计算方法不同于 schedule，而是
+    scheduledExecutionTime(n)=firstExecuteTime +n*periodTime，该计算方法永远保持不变。所以 scheduleAtFixedRate
+    更加侧重于保持执行频率的稳定。*/
     public void scheduleAtFixedRate(TimerTask task, long delay, long period) {
         if (delay < 0)
             throw new IllegalArgumentException("Negative delay.");
@@ -405,6 +421,10 @@ public class Timer {
                 task.state = TimerTask.SCHEDULED;
             }
 
+            /*在添加任务到队列时，这里使用 Timer 内 TaskQueue 实例作为对象锁，并且使用 wait 和 notify 方法来通知任务调度。
+            Timer 类可以保证多个线程可以共享单个 Timer 对象而无需进行外部同步，所以 Timer 类是线程安全的。*/
+            /*Timer 是内部是单一线程，每次调用sched方法才把task加到队列中，执行完task之后再把task从队列中剔除，
+            再去执行下一个task，不能并行执行任务。*/
             queue.add(task);
             if (queue.getMin() == task)
                 queue.notify();
@@ -520,6 +540,8 @@ class TimerThread extends Thread {
             try {
                 TimerTask task;
                 boolean taskFired;
+                /*在执行定时任务时，TimerThread 中将这个 taskqueue 对象作为锁，在任何时刻只能有一个线程执行 TimerTask 。
+                Timer 类为了保证线程安全的，是不需要外部同步机制就可以共享同一个 Timer 对象。*/
                 synchronized(queue) {
                     // Wait for queue to become non-empty
                     while (queue.isEmpty() && newTasksMayBeScheduled)
@@ -538,8 +560,11 @@ class TimerThread extends Thread {
                         currentTime = System.currentTimeMillis();
                         executionTime = task.nextExecutionTime;
                         if (taskFired = (executionTime<=currentTime)) {
+
+                            /*下面代码很好地体现了 period 属性作用，
+                            period 为正值时表示固定速率执行，负值表示固定延迟执行，值 0 表示一个非重复性的任务。*/
                             if (task.period == 0) { // Non-repeating, remove
-                                queue.removeMin();
+                                queue.removeMin();//优先队列保持二叉堆序性地操作
                                 task.state = TimerTask.EXECUTED;
                             } else { // Repeating task, reschedule
                                 queue.rescheduleMin(
@@ -554,6 +579,11 @@ class TimerThread extends Thread {
                 if (taskFired)  // Task fired; run it, holding no locks
                     task.run();
             } catch(InterruptedException e) {
+                /*可以看到 Timer 是不会捕获异常的，如果 TimerTask 抛出的了未检查异常则会导致 Timer 线程终止，
+                同时 Timer 也不会重新恢复线程的执行，它会错误的认为整个 Timer 线程都会取消。
+                同时，已经被安排但尚未执行的 TimerTask 也不会再执行了，新的任务也不能被调度。
+                所以，如果 TimerTask 抛出未检查的异常，Timer 将会产生无法预料的行为。*/
+
             }
         }
     }
@@ -575,6 +605,10 @@ class TaskQueue {
      * each node n in the heap, and each descendant of n, d,
      * n.nextExecutionTime <= d.nextExecutionTime.
      */
+/*
+    TaskQueue 队列，内部用一个 TimerTask[] 数组实现优先队列（二叉堆），默认最大任务数是 128 ，
+    当添加定时任务超过当前最大容量时会这个数组会拓展到原来 2 倍。
+    */
     private TimerTask[] queue = new TimerTask[128];
 
     /**
@@ -622,6 +656,8 @@ class TaskQueue {
     /**
      * Remove the head task from the priority queue.
      */
+/*    获取下一个计划执行任务时，取队列的头出列即可，为了减少额外性能消耗，移除队列头部元素的操作是先把队尾元素赋值到队首后，
+    再把队尾置空，队列数量完成减一后进行优先权值操作*/
     void removeMin() {
         queue[1] = queue[size];
         queue[size--] = null;  // Drop extra reference to prevent memory leak
@@ -676,6 +712,10 @@ class TaskQueue {
      * (by swapping it with its parent) repeatedly until queue[k]'s
      * nextExecutionTime is greater than or equal to that of its parent.
      */
+/*    两个方法的核心思路都是通过向上或向下调整二叉堆中元素所在位置，保持堆的有序性：
+    fixUp 是将元素值小于父节点的子节点与父节点交换位置，保持堆有序。交换位置后，原来的子节点可能仍然比更上层的父节点小，
+    所以整个过程需要循环进行。这样一来，原来的子节点有可能升级为层级更高的父节点，类似于一个轻的物体从湖底往上浮直到达到其
+    重力与浮力相平衡的过程。*/
     private void fixUp(int k) {
         while (k > 1) {
             int j = k >> 1;
@@ -696,6 +736,10 @@ class TaskQueue {
      * (by swapping it with its smaller child) repeatedly until queue[k]'s
      * nextExecutionTime is less than or equal to those of its children.
      */
+/*    fixDown 将元素值大于子节点的父节点与子节点交换位置，交换位置后， 原来的父节点仍然有可能比其下面的子节点大，
+    所以还需要继续进行类相同的操作，以便保持堆的有序性。所以整个过程循环进行。
+    这类似于一个重的物体从湖面下沉到距离湖底的某个位置，直到达到其重力与浮力相平衡为止。
+    总的来说，就是调整大的元素下沉，小的元素上浮，反复调整后堆顶一直保持是堆中最小的元素，父节点元素要一直小于或等于子节点。*/
     private void fixDown(int k) {
         int j;
         while ((j = k << 1) <= size && j > 0) {
