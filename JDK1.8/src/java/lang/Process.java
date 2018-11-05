@@ -92,6 +92,7 @@ public abstract class Process {
      * @return the output stream connected to the normal input of the
      *         subprocess
      */
+    //获取标准流（Standard streams）的 Standard input，refer to https://www.jianshu.com/p/2b00f5f3cb48
     public abstract OutputStream getOutputStream();
 
     /**
@@ -118,6 +119,7 @@ public abstract class Process {
      * @return the input stream connected to the normal output of the
      *         subprocess
      */
+    //获取标准流（Standard streams）的 Standard output，refer to https://www.jianshu.com/p/2b00f5f3cb48
     public abstract InputStream getInputStream();
 
     /**
@@ -139,6 +141,7 @@ public abstract class Process {
      * @return the input stream connected to the error output of
      *         the subprocess
      */
+    //获取标准流（Standard streams）的 Standard error，refer to https://www.jianshu.com/p/2b00f5f3cb48
     public abstract InputStream getErrorStream();
 
     /**
